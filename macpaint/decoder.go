@@ -14,7 +14,6 @@ import (
 	"image"
 	"image/color"
 	"io"
-	"io/ioutil"
 )
 
 const (
@@ -66,16 +65,16 @@ type header struct {
 }
 
 // A ErrFormat reports that the input is not a valid MacPaint.
-type ErrFormat string
+type FormatError string
 
-func (e ErrFormat) Error() string {
+func (e FormatError) Error() string {
 	return "macpaint: invalid format: " + string(e)
 }
 
-// An ErrUnsupported reports that the variant of the MacPaint file is not supported.
-type ErrUnsupported string
+// An UnsupportedError reports that the variant of the MacPaint file is not supported.
+type UnsupportedError string
 
-func (e ErrUnsupported) Error() string {
+func (e UnsupportedError) Error() string {
 	return "macpaint: unsupported variant: " + string(e)
 }
 
@@ -133,15 +132,15 @@ func (d *decoder) readHeader() error {
 		return err
 	}
 	if d.buf[0] != 0 {
-		return ErrFormat("expected version 0")
+		return FormatError("expected version 0")
 	}
 	if d.buf[1] > 63 {
-		return ErrFormat("invalid filename length")
+		return FormatError("invalid filename length")
 	}
 	d.header.fileName = string(d.buf[2 : 2+d.buf[1]])
 	d.header.fileType = string(d.buf[65:69])
 	if d.header.fileType != fileType {
-		return ErrFormat("invalid file type")
+		return FormatError("invalid file type")
 	}
 	d.header.fileCreator = string(d.buf[69:73])
 	d.header.fileFlags = d.buf[73]
@@ -174,7 +173,7 @@ func (d *decoder) decode() (image.Image, error) {
 		// }
 	}
 	// 304 for pattern data, 204 for padding
-	if _, err := io.CopyN(ioutil.Discard, d.r, 304+204); err != nil {
+	if _, err := io.CopyN(io.Discard, d.r, 304+204); err != nil {
 		return nil, err
 	}
 	rd := bufio.NewReader(d.r)
@@ -190,11 +189,11 @@ func (d *decoder) decode() (image.Image, error) {
 			if err != nil {
 				return nil, err
 			}
-			for i := 0; i < int(n); i++ {
+			for range int(n) {
 				c := b
-				for j := 0; j < 8; j++ {
+				for range 8 {
 					if o == len(img.Pix) {
-						return nil, ErrFormat("overflow decoding RLE")
+						return nil, FormatError("overflow decoding RLE")
 					}
 					if c&0x80 != 0 {
 						img.Pix[o] = 0
@@ -211,9 +210,9 @@ func (d *decoder) decode() (image.Image, error) {
 				return nil, err
 			}
 			for _, b := range d.buf[:int(n)] {
-				for j := 0; j < 8; j++ {
+				for range 8 {
 					if o == len(img.Pix) {
-						return nil, ErrFormat("overflow decoding RLE")
+						return nil, FormatError("overflow decoding RLE")
 					}
 					if b&0x80 != 0 {
 						img.Pix[o] = 0
