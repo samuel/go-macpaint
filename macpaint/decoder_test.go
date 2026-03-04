@@ -45,7 +45,7 @@ func TestDecode(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %s", filename, err)
 			}
-			defer f.Close()
+			defer fo.Close()
 			if err := png.Encode(fo, img); err != nil {
 				t.Fatalf("%s: %s", filename, err)
 			}
@@ -72,7 +72,7 @@ func TestDecodeHeader(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
+		defer fo.Close()
 		if err := png.Encode(fo, img); err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestDecodeNoHeader(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
+		defer fo.Close()
 		if err := png.Encode(fo, img); err != nil {
 			t.Fatal(err)
 		}

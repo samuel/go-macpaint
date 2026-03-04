@@ -12,6 +12,7 @@ package macpaint
 
 import (
 	"bufio"
+	"errors"
 	"image"
 	"image/color"
 	"io"
@@ -65,7 +66,7 @@ type header struct {
 	crcValue         uint16 // CRC value of previous 124 bytes
 }
 
-// A ErrFormat reports that the input is not a valid MacPaint.
+// FormatError reports that the input is not a valid MacPaint.
 type FormatError string
 
 func (e FormatError) Error() string {
@@ -117,7 +118,7 @@ func newDecoder(r io.Reader) (*decoder, error) {
 		buf: make([]byte, 512),
 	}
 	if err := d.readHeader(); err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			err = io.ErrUnexpectedEOF
 		}
 		return nil, err
@@ -158,7 +159,7 @@ func (d *decoder) readHeader() error {
 	d.header.creationStamp = decodeUint32(d.buf[65+26 : 65+30])
 	d.header.modificationStamp = decodeUint32(d.buf[65+30 : 65+34])
 	d.header.getInfoLength = decodeUint16(d.buf[65+34 : 65+36])
-	d.header.finderFlags = decodeUint16(d.buf[65+36 : 65+38])
+	d.header.finderFlags = (uint16(d.buf[73]) << 8) | uint16(d.buf[101])
 	d.header.unpackedLength = decodeUint32(d.buf[116:120])
 	d.header.secondHeadLength = decodeUint16(d.buf[120:122])
 	d.header.uploadVersion = d.buf[122]
