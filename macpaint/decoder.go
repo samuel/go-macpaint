@@ -4,7 +4,7 @@ package macpaint
 // http://www.fileformat.info/format/macpaint/egff.htm
 // http://www.computerhistory.org/atchm/macpaint-and-quickdraw-source-code/
 // http://www.textfiles.com/programming/FORMATS/pix_fmt.txt
-// http://www.idea2ic.com/File_Formats/macpaint.pdf
+// https://web.archive.org/web/20230209064403/http://www.idea2ic.com/File_Formats/macpaint.pdf
 // http://www.fileformat.info/format/macpaint/sample/index.htm
 
 // http://cd.textfiles.com/vgaspectrum/mac/
@@ -80,6 +80,7 @@ func (e UnsupportedError) Error() string {
 
 func init() {
 	image.RegisterFormat("mac", "\x00????????????????????????????????????????????????????????????????PNTG", Decode, DecodeConfig)
+	image.RegisterFormat("mac", "\x00\x00\x00\x02", Decode, DecodeConfig)
 }
 
 // Decode reads a MacPaint image from r and returns it as an image.Image.
@@ -99,6 +100,9 @@ func Decode(r io.Reader) (image.Image, error) {
 // DecodeConfig returns the color model and dimensions of a MacPaint image
 // without decoding the entire image.
 func DecodeConfig(r io.Reader) (image.Config, error) {
+	if _, err := newDecoder(r); err != nil {
+		return image.Config{}, err
+	}
 	return image.Config{
 		ColorModel: color.GrayModel,
 		Width:      width,
@@ -184,6 +188,9 @@ func (d *decoder) decode() (image.Image, error) {
 			return nil, err
 		}
 		if n&0x80 != 0 {
+			if n == 0x80 {
+				continue
+			}
 			n = 1 - n
 			b, err := rd.ReadByte()
 			if err != nil {
