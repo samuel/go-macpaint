@@ -6,6 +6,7 @@ package macpaint
 // http://www.textfiles.com/programming/FORMATS/pix_fmt.txt
 // https://web.archive.org/web/20230209064403/http://www.idea2ic.com/File_Formats/macpaint.pdf
 // http://www.fileformat.info/format/macpaint/sample/index.htm
+// https://files.stairways.com/other/macbinaryii-standard-info.txt
 
 // http://cd.textfiles.com/vgaspectrum/mac/
 
@@ -158,12 +159,34 @@ func (d *decoder) readHeader() error {
 	d.header.modificationStamp = decodeUint32(d.buf[65+30 : 65+34])
 	d.header.getInfoLength = decodeUint16(d.buf[65+34 : 65+36])
 	d.header.finderFlags = decodeUint16(d.buf[65+36 : 65+38])
-	d.header.unpackedLength = decodeUint32(d.buf[65+52 : 65+56])
-	d.header.secondHeadLength = decodeUint16(d.buf[65+56 : 65+58])
-	d.header.uploadVersion = d.buf[65+58]
-	d.header.readVersion = d.buf[65+59]
-	d.header.crcValue = decodeUint16(d.buf[65+60 : 65+62])
+	d.header.unpackedLength = decodeUint32(d.buf[116:120])
+	d.header.secondHeadLength = decodeUint16(d.buf[120:122])
+	d.header.uploadVersion = d.buf[122]
+	d.header.readVersion = d.buf[123]
+	d.header.crcValue = decodeUint16(d.buf[124:126])
+	// MacBinary II files have version byte 129 at offset 122; only they carry a valid CRC.
+	if d.buf[122] == 129 {
+		if computed := crcCCITT(d.buf[0:124]); computed != d.header.crcValue {
+			return FormatError("CRC mismatch")
+		}
+	}
 	return nil
+}
+
+// crcCCITT computes the CRC-CCITT (polynomial 0x1021) checksum over data.
+func crcCCITT(data []byte) uint16 {
+	var crc uint16
+	for _, b := range data {
+		for range 8 {
+			if (crc>>15)^(uint16(b)>>7) != 0 {
+				crc = (crc << 1) ^ 0x1021
+			} else {
+				crc <<= 1
+			}
+			b <<= 1
+		}
+	}
+	return crc
 }
 
 func (d *decoder) decode() (image.Image, error) {
