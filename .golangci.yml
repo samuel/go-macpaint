@@ -1,0 +1,48 @@
+version: "2"
+
+# Report every finding; the defaults cap duplicates at 3 per linter.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errcheck
+    - errorlint
+    - forcetypeassert
+    - gocritic
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - predeclared
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+
+  settings:
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: package-comments
+        - name: exported
+
+  exclusions:
+    rules:
+      # Test fixtures are opened by path from a glob
+      - path: _test\.go
+        linters:
+          - gosec
+        text: G304
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

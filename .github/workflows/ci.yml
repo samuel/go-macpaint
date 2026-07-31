@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly longer fuzz run to keep growing the cached corpus.
+    - cron: '17 4 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The go.mod minimum, plus the current release.
+        go: ['1.24', 'stable']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: go build ./...
+
+      - run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # The corpus cache below owns GOCACHE; don't let setup-go manage it too.
+          cache: false
+
+      # Generated corpus entries live in $GOCACHE/fuzz, not in testdata/fuzz (which
+      # holds only checked-in seeds and crashers).
+      - name: Locate the fuzz corpus
+        id: corpus
+        run: echo "dir=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
+
+      # Cache entries are immutable, so write a unique key each run and restore from
+      # the most recent previous one. Each run therefore starts from the corpus the
+      # last run ended with, and saves whatever it discovered.
+      - name: Restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.corpus.outputs.dir }}
+          key: fuzz-corpus-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ runner.os }}-
+
+      # FuzzDecode reaches ~140k execs/sec, so a short budget still explores a lot.
+      - name: Fuzz the decoder
+        run: |
+          go test -run='^$' -fuzz='^FuzzDecode$' \
+            -fuzztime=${{ github.event_name == 'schedule' && '2m' || '60s' }} \
+            ./macpaint/
+
+      # The round-trip target re-encodes every 576x720 pixel, so it manages only a
+      # few execs/sec. Restrict it to the weekly run, where that rate is acceptable.
+      - name: Fuzz the encode round-trip
+        if: github.event_name == 'schedule'
+        run: go test -run='^$' -fuzz='^FuzzEncodeRoundTrip$' -fuzztime=5m ./macpaint/
+
+      - name: Report corpus size
+        if: always()
+        run: |
+          dir='${{ steps.corpus.outputs.dir }}'
+          echo "Cached corpus entries: $(find "$dir" -type f 2>/dev/null | wc -l)"
+
+      # Crashers are written into the package's testdata/fuzz directory. Surface them
+      # so the reproducer can be committed as a regression seed.
+      - name: Upload crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: macpaint/testdata/fuzz/
+          if-no-files-found: ignore

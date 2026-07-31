@@ -1,69 +1,79 @@
+// Package macpaint decodes and encodes MacPaint (PNTG) image files.
+//
+// MacPaint images are always 576x720 pixels and one bit per pixel. Two file
+// variants are supported: files wrapped in a 128-byte MacBinary header, and
+// headerless files beginning with the four-byte document version.
+//
+// Only the MacBinary-headered variant is registered with the image package for
+// use through image.Decode. A headerless file begins with three zero bytes and a
+// small version number, which is far too weak a signature to sniff on; decode
+// those by calling Decode or DecodeConfig directly.
+//
+// Format references:
+//   - http://fileformats.archiveteam.org/wiki/MacPaint
+//   - http://www.fileformat.info/format/macpaint/egff.htm
+//   - http://www.computerhistory.org/atchm/macpaint-and-quickdraw-source-code/
+//   - http://www.textfiles.com/programming/FORMATS/pix_fmt.txt
+//   - https://web.archive.org/web/20230209064403/http://www.idea2ic.com/File_Formats/macpaint.pdf
+//   - https://files.stairways.com/other/macbinaryii-standard-info.txt
+//
+// Sample files:
+//   - http://www.fileformat.info/format/macpaint/sample/index.htm
+//   - http://cd.textfiles.com/vgaspectrum/mac/
 package macpaint
-
-// http://fileformats.archiveteam.org/wiki/MacPaint
-// http://www.fileformat.info/format/macpaint/egff.htm
-// http://www.computerhistory.org/atchm/macpaint-and-quickdraw-source-code/
-// http://www.textfiles.com/programming/FORMATS/pix_fmt.txt
-// https://web.archive.org/web/20230209064403/http://www.idea2ic.com/File_Formats/macpaint.pdf
-// http://www.fileformat.info/format/macpaint/sample/index.htm
-// https://files.stairways.com/other/macbinaryii-standard-info.txt
-
-// http://cd.textfiles.com/vgaspectrum/mac/
 
 import (
 	"bufio"
+	"encoding/binary"
 	"errors"
 	"image"
 	"image/color"
 	"io"
 )
 
+// Width and Height are the fixed pixel dimensions of every MacPaint image.
 const (
-	width    = 576
-	height   = 720
+	Width  = 576
+	Height = 720
+)
+
+const (
 	fileType = "PNTG"
+
+	// defaultCreator is the creator ID EncodeFile writes when none is supplied:
+	// MacPaint's own.
+	defaultCreator = "MPNT"
+
+	// macBinaryHeaderLen is the size of a MacBinary header, which also bounds the
+	// longest PackBits literal run (128 bytes), so one buffer serves both.
+	macBinaryHeaderLen = 128
+
+	// A MacPaint document begins with a 4-byte version, 304 bytes of fill patterns
+	// and 204 bytes of padding.
+	docVersionLen = 4
+	patternLen    = 304
+	paddingLen    = 204
+
+	// macBinaryII is the smallest uploader-version byte (offset 122) denoting a
+	// MacBinary II header. MacBinary II added the secondary-header length and the
+	// CRC; in MacBinary I those bytes are reserved and may hold arbitrary data.
+	macBinaryII = 129
+
+	maxFileNameLen = 63
 )
 
-// file flag bits
-const (
-	inited = 1 << iota
-	changed
-	busy
-	bozo
-	system
-	bundle
-	invisible
-	locked
-)
-
-type decoder struct {
-	r        io.Reader
-	buf      []byte
-	noHeader bool
-	header   header
+// File is a MacPaint file: its optional MacBinary header and its image.
+type File struct {
+	// Header describes the MacBinary wrapper. It is nil for headerless files, and
+	// EncodeFile writes a headerless file when it is nil.
+	Header *Header
+	Image  *image.Paletted
 }
 
-type header struct {
-	fileName           string
-	fileType           string // Type of Macintosh file
-	fileCreator        string // ID of program that created file
-	fileFlags          byte   // File attribute flags
-	fileVertPos        uint16 // File vertical position in window
-	fileHorzPos        uint16 // File horizontal position in window
-	windowID           uint16 // Window or folder ID
-	protected          bool   // File protection
-	sizeOfDataFork     uint32 // Size of file data fork in bytes
-	sizeOfResourceFork uint32 // Size of file resource fork in bytes
-	creationStamp      uint32 // Time and date file created
-	modificationStamp  uint32 // Time and date file last modified
-	getInfoLength      uint16 // GetInfo message length
-	// The following fields were added for MacBinary II
-	finderFlags      uint16 // Finder flags
-	unpackedLength   uint32 // Total unpacked file length
-	secondHeadLength uint16 // Length of secondary header
-	uploadVersion    byte   // MacBinary version used with uploader
-	readVersion      byte   // MacBinary version needed to read
-	crcValue         uint16 // CRC value of previous 124 bytes
+type decoder struct {
+	r      io.Reader
+	buf    []byte
+	header *Header // nil for a headerless file
 }
 
 // FormatError reports that the input is not a valid MacPaint.
@@ -73,20 +83,40 @@ func (e FormatError) Error() string {
 	return "macpaint: invalid format: " + string(e)
 }
 
-// An UnsupportedError reports that the variant of the MacPaint file is not supported.
+// An UnsupportedError reports an unsupported MacPaint file variant.
 type UnsupportedError string
 
 func (e UnsupportedError) Error() string {
 	return "macpaint: unsupported variant: " + string(e)
 }
 
+// Palette is the two-color palette of a decoded MacPaint image. Index 0 is white
+// and index 1 is black, so a zero-valued Pix is a blank page, matching MacPaint's
+// convention that an unset bit is white.
+var Palette = color.Palette{color.Gray{Y: 0xff}, color.Gray{Y: 0x00}}
+
+// bitPixels maps each byte of packed MacPaint pixels to the eight palette indices
+// it expands to. A set bit is black, which is index 1.
+var bitPixels = func() [256][8]byte {
+	var t [256][8]byte
+	for b := range 256 {
+		for i := range 8 {
+			if b&(0x80>>i) != 0 {
+				t[b][i] = 1
+			}
+		}
+	}
+	return t
+}()
+
 func init() {
 	image.RegisterFormat("mac", "\x00????????????????????????????????????????????????????????????????PNTG", Decode, DecodeConfig)
-	image.RegisterFormat("mac", "\x00\x00\x00\x02", Decode, DecodeConfig)
 }
 
-// Decode reads a MacPaint image from r and returns it as an image.Image.
-// The type of Image returned depends on the MacPaint contents.
+// Decode reads a MacPaint image from r and returns it as an image.Image. The
+// concrete type is always *image.Paletted, using Palette.
+//
+// Use DecodeFile instead to also read the MacBinary header.
 func Decode(r io.Reader) (image.Image, error) {
 	d, err := newDecoder(r)
 	if err != nil {
@@ -99,6 +129,20 @@ func Decode(r io.Reader) (image.Image, error) {
 	return img, nil
 }
 
+// DecodeFile reads a MacPaint image from r along with its MacBinary header. The
+// returned File has a nil Header when r holds a headerless file.
+func DecodeFile(r io.Reader) (*File, error) {
+	d, err := newDecoder(r)
+	if err != nil {
+		return nil, err
+	}
+	img, err := d.decode()
+	if err != nil {
+		return nil, err
+	}
+	return &File{Header: d.header, Image: img}, nil
+}
+
 // DecodeConfig returns the color model and dimensions of a MacPaint image
 // without decoding the entire image.
 func DecodeConfig(r io.Reader) (image.Config, error) {
@@ -106,71 +150,61 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 		return image.Config{}, err
 	}
 	return image.Config{
-		ColorModel: color.GrayModel,
-		Width:      width,
-		Height:     height,
+		ColorModel: Palette,
+		Width:      Width,
+		Height:     Height,
 	}, nil
+}
+
+// unexpectedEOF reports the io.EOF of a partial read as io.ErrUnexpectedEOF, so
+// truncation doesn't look like a clean end of stream.
+func unexpectedEOF(err error) error {
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
+}
+
+// validDocVersion reports whether v is a MacPaint document version seen in real
+// files. Version 0 means the fill patterns are absent (the space is still
+// reserved); 2 and 3 carry patterns.
+func validDocVersion(v uint32) bool {
+	return v == 0 || v == 2 || v == 3
 }
 
 func newDecoder(r io.Reader) (*decoder, error) {
 	d := &decoder{
 		r:   r,
-		buf: make([]byte, 512),
+		buf: make([]byte, macBinaryHeaderLen),
 	}
 	if err := d.readHeader(); err != nil {
-		if errors.Is(err, io.EOF) {
-			err = io.ErrUnexpectedEOF
-		}
-		return nil, err
+		return nil, unexpectedEOF(err)
 	}
 	return d, nil
 }
 
 func (d *decoder) readHeader() error {
-	if _, err := io.ReadFull(d.r, d.buf[:4]); err != nil {
+	if _, err := io.ReadFull(d.r, d.buf[:docVersionLen]); err != nil {
 		return err
 	}
-	if d.buf[0] == 0 && d.buf[1] == 0 && d.buf[2] == 0 && d.buf[3] == 2 {
-		d.noHeader = true
-		return nil
-	}
-	if _, err := io.ReadFull(d.r, d.buf[4:128]); err != nil {
-		return err
-	}
-	if d.buf[0] != 0 {
-		return FormatError("expected version 0")
-	}
-	if d.buf[1] > 63 {
-		return FormatError("invalid filename length")
-	}
-	d.header.fileName = string(d.buf[2 : 2+d.buf[1]])
-	d.header.fileType = string(d.buf[65:69])
-	if d.header.fileType != fileType {
-		return FormatError("invalid file type")
-	}
-	d.header.fileCreator = string(d.buf[69:73])
-	d.header.fileFlags = d.buf[73]
-	d.header.fileVertPos = decodeUint16(d.buf[75:77])
-	d.header.fileHorzPos = decodeUint16(d.buf[77:79])
-	d.header.windowID = decodeUint16(d.buf[79:81])
-	d.header.protected = d.buf[81] == 1
-	d.header.sizeOfDataFork = decodeUint32(d.buf[83:87])
-	d.header.sizeOfResourceFork = decodeUint32(d.buf[87:91])
-	d.header.creationStamp = decodeUint32(d.buf[65+26 : 65+30])
-	d.header.modificationStamp = decodeUint32(d.buf[65+30 : 65+34])
-	d.header.getInfoLength = decodeUint16(d.buf[65+34 : 65+36])
-	d.header.finderFlags = (uint16(d.buf[73]) << 8) | uint16(d.buf[101])
-	d.header.unpackedLength = decodeUint32(d.buf[116:120])
-	d.header.secondHeadLength = decodeUint16(d.buf[120:122])
-	d.header.uploadVersion = d.buf[122]
-	d.header.readVersion = d.buf[123]
-	d.header.crcValue = decodeUint16(d.buf[124:126])
-	// MacBinary II files have version byte 129 at offset 122; only they carry a valid CRC.
-	if d.buf[122] == 129 {
-		if computed := crcCCITT(d.buf[0:124]); computed != d.header.crcValue {
-			return FormatError("CRC mismatch")
+	// A headerless file opens with the MacPaint document version instead of a
+	// MacBinary header. MacBinary requires a filename length of 1 to 63 at offset
+	// 1, so three leading zero bytes cannot begin a MacBinary header and the input
+	// can only be a headerless document.
+	if d.buf[0] == 0 && d.buf[1] == 0 && d.buf[2] == 0 {
+		if !validDocVersion(uint32(d.buf[3])) {
+			return FormatError("unrecognized document version")
 		}
+		return nil // Headerless: d.header stays nil.
 	}
+	if _, err := io.ReadFull(d.r, d.buf[docVersionLen:macBinaryHeaderLen]); err != nil {
+		return err
+	}
+	h, err := parseHeader(d.buf[:macBinaryHeaderLen])
+	if err != nil {
+		return err
+	}
+	d.header = h
 	return nil
 }
 
@@ -190,79 +224,105 @@ func crcCCITT(data []byte) uint16 {
 	return crc
 }
 
-func (d *decoder) decode() (image.Image, error) {
-	if !d.noHeader {
-		if _, err := io.ReadFull(d.r, d.buf[:4]); err != nil {
-			return nil, err
+// body returns the reader for the MacPaint document, bounded by the declared data
+// fork length so that decoding cannot run into a following resource fork.
+func (d *decoder) body() io.Reader {
+	if d.header == nil || d.header.SizeOfDataFork == 0 {
+		return d.r
+	}
+	return io.LimitReader(d.r, int64(d.header.SizeOfDataFork))
+}
+
+// writePixels expands the packed bits of b into pix at offset o and returns the
+// new offset. Both the image size and every run are whole bytes, so o always
+// lands on a multiple of 8.
+func writePixels(pix []byte, o int, b byte) (int, error) {
+	if o+8 > len(pix) {
+		return o, FormatError("overflow decoding RLE")
+	}
+	copy(pix[o:o+8], bitPixels[b][:])
+	return o + 8, nil
+}
+
+// skipDocHeader consumes the MacPaint document header: the version long, which is
+// only present when a MacBinary header preceded it, plus the fill patterns and
+// padding.
+func (d *decoder) skipDocHeader(r io.Reader) error {
+	if d.header != nil {
+		if _, err := io.ReadFull(r, d.buf[:docVersionLen]); err != nil {
+			return unexpectedEOF(err)
 		}
-		// TODO: not sure why this differs between some files
-		// if d.buf[0] != 0 || d.buf[1] != 0 || d.buf[2] != 0 || d.buf[3] != 2 {
-		// 	return nil, ErrFormat("missing data marker")
-		// }
+		// The document version leads the data fork. Real files carry 0, 2 or 3
+		// here, so only clearly bogus values are rejected.
+		if v := binary.BigEndian.Uint32(d.buf[:docVersionLen]); !validDocVersion(v) {
+			return FormatError("unrecognized document version")
+		}
 	}
-	// 304 for pattern data, 204 for padding
-	if _, err := io.CopyN(io.Discard, d.r, 304+204); err != nil {
-		return nil, err
+	if _, err := io.CopyN(io.Discard, r, patternLen+paddingLen); err != nil {
+		return unexpectedEOF(err)
 	}
-	rd := bufio.NewReader(d.r)
-	img := image.NewGray(image.Rect(0, 0, width, height))
-	for o := 0; o < len(img.Pix); {
+	return nil
+}
+
+// readRun expands a PackBits run, repeating one byte 257-n times (2 to 128).
+func readRun(rd *bufio.Reader, pix []byte, o int, n byte) (int, error) {
+	b, err := rd.ReadByte()
+	if err != nil {
+		return o, unexpectedEOF(err)
+	}
+	for range 257 - int(n) {
+		if o, err = writePixels(pix, o, b); err != nil {
+			return o, err
+		}
+	}
+	return o, nil
+}
+
+// readLiteral expands a PackBits literal, copying the next n+1 bytes verbatim.
+func (d *decoder) readLiteral(rd *bufio.Reader, pix []byte, o int, n byte) (int, error) {
+	litLen := int(n) + 1
+	if _, err := io.ReadFull(rd, d.buf[:litLen]); err != nil {
+		return o, unexpectedEOF(err)
+	}
+	for _, b := range d.buf[:litLen] {
+		var err error
+		if o, err = writePixels(pix, o, b); err != nil {
+			return o, err
+		}
+	}
+	return o, nil
+}
+
+// decodePixels fills pix from the PackBits-compressed image data in rd.
+func (d *decoder) decodePixels(rd *bufio.Reader, pix []byte) error {
+	for o := 0; o < len(pix); {
 		n, err := rd.ReadByte()
 		if err != nil {
-			return nil, err
+			return unexpectedEOF(err)
 		}
-		if n&0x80 != 0 {
-			if n == 0x80 {
-				continue
-			}
-			n = 1 - n
-			b, err := rd.ReadByte()
-			if err != nil {
-				return nil, err
-			}
-			for range int(n) {
-				c := b
-				for range 8 {
-					if o == len(img.Pix) {
-						return nil, FormatError("overflow decoding RLE")
-					}
-					if c&0x80 != 0 {
-						img.Pix[o] = 0
-					} else {
-						img.Pix[o] = 255
-					}
-					o++
-					c <<= 1
-				}
-			}
-		} else {
-			n++
-			if _, err := io.ReadFull(rd, d.buf[:int(n)]); err != nil {
-				return nil, err
-			}
-			for _, b := range d.buf[:int(n)] {
-				for range 8 {
-					if o == len(img.Pix) {
-						return nil, FormatError("overflow decoding RLE")
-					}
-					if b&0x80 != 0 {
-						img.Pix[o] = 0
-					} else {
-						img.Pix[o] = 255
-					}
-					o++
-					b <<= 1
-				}
-			}
+		switch {
+		case n == 0x80:
+			// No operation, per the PackBits specification.
+		case n&0x80 != 0:
+			o, err = readRun(rd, pix, o, n)
+		default:
+			o, err = d.readLiteral(rd, pix, o, n)
+		}
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (d *decoder) decode() (*image.Paletted, error) {
+	r := d.body()
+	if err := d.skipDocHeader(r); err != nil {
+		return nil, err
+	}
+	img := image.NewPaletted(image.Rect(0, 0, Width, Height), Palette)
+	if err := d.decodePixels(bufio.NewReader(r), img.Pix); err != nil {
+		return nil, err
+	}
 	return img, nil
-}
-
-func decodeUint16(b []byte) uint16 {
-	return (uint16(b[0]) << 8) | uint16(b[1])
-}
-
-func decodeUint32(b []byte) uint32 {
-	return (uint32(b[0]) << 24) | (uint32(b[1]) << 16) | (uint32(b[2]) << 8) | uint32(b[3])
 }

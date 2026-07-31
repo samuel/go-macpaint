@@ -1,2 +1,17 @@
-.DS_File
+.DS_Store
 .idea
+
+# Regenerable PNGs written by "go test -save".
+testout/
+
+# Sample images. Only the two named fixtures and a small representative subset are
+# committed; a larger local corpus can sit here without dirtying "git status".
+testdata/*.mac
+!testdata/header.mac
+!testdata/noheader.mac
+!testdata/aladin.mac
+!testdata/awards.mac
+!testdata/bigbinky.mac
+!testdata/armored.mac
+!testdata/bamboo.mac
+!testdata/1066.mac
