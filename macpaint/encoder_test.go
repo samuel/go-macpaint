@@ -157,6 +157,7 @@ func TestEncodeFileRoundTrip(t *testing.T) {
 				f.Header.FileName = "RENAMED.PNT"
 				f.Header.FileCreator = "TEST"
 				f.Header.FileFlags = byte(FlagInited | FlagInvisible)
+				f.Header.FinderFlags = uint16(f.Header.FileFlags)<<8 | f.Header.FinderFlags&0xff
 			}
 
 			var buf bytes.Buffer

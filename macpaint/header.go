@@ -3,6 +3,7 @@ package macpaint
 import (
 	"encoding/binary"
 	"time"
+	"unicode/utf8"
 )
 
 // FinderFlag is a bit in Header.FileFlags, the Finder flags byte at MacBinary
@@ -39,15 +40,18 @@ func macTime(stamp uint32) time.Time {
 	return macEpoch.Add(time.Duration(stamp) * time.Second)
 }
 
-// macStamp converts a time.Time back to a Macintosh HFS timestamp. The zero time,
-// and any time outside the representable range, becomes zero.
+// macStamp converts a time.Time back to a Macintosh HFS timestamp. The zero time
+// becomes zero; other times are clamped to the representable range.
 func macStamp(t time.Time) uint32 {
 	if t.IsZero() {
 		return 0
 	}
 	secs := t.Unix() - macEpoch.Unix()
-	if secs < 0 || secs > int64(^uint32(0)) {
-		return 0
+	if secs < 1 {
+		return 1
+	}
+	if secs > int64(^uint32(0)) {
+		return ^uint32(0)
 	}
 	return uint32(secs)
 }
@@ -72,7 +76,7 @@ type Header struct {
 	SizeOfDataFork     uint32 // Size of the file's data fork in bytes
 	SizeOfResourceFork uint32 // Size of the file's resource fork in bytes
 	GetInfoLength      uint16 // GetInfo comment length
-	FinderFlags        uint16 // (FileFlags << 8) | byte 101; MacBinary II only
+	FinderFlags        uint16 // (FileFlags << 8) | byte 101; FileFlags is authoritative for the high byte
 	UnpackedLength     uint32 // Total unpacked length; MacBinary II only
 	SecondHeaderLength uint16 // Secondary header length; non-zero is unsupported
 	UploadVersion      byte   // MacBinary version of the uploading program
@@ -145,7 +149,11 @@ func appendHeader(dst []byte, h *Header, dataForkLen uint32) ([]byte, error) {
 		name = "untitled"
 	}
 	if len(name) > maxFileNameLen {
-		name = name[:maxFileNameLen]
+		cut := maxFileNameLen
+		for cut > 0 && !utf8.RuneStart(name[cut]) {
+			cut--
+		}
+		name = name[:cut]
 	}
 	creator := h.FileCreator
 	if creator == "" {
@@ -159,6 +167,9 @@ func appendHeader(dst []byte, h *Header, dataForkLen uint32) ([]byte, error) {
 	b[0] = 0
 	//nolint:gosec // G115: name was clamped to maxFileNameLen (63) above.
 	b[1] = byte(len(name))
+	for i := 2; i < 65; i++ {
+		b[i] = ' '
+	}
 	copy(b[2:65], name)
 	copy(b[65:69], fileType)
 	copy(b[69:73], creator)
@@ -175,6 +186,9 @@ func appendHeader(dst []byte, h *Header, dataForkLen uint32) ([]byte, error) {
 	binary.BigEndian.PutUint32(b[91:95], macStamp(h.Created))
 	binary.BigEndian.PutUint32(b[95:99], macStamp(h.Modified))
 	binary.BigEndian.PutUint16(b[99:101], h.GetInfoLength)
+	if finderFileFlags := byte(h.FinderFlags >> 8); finderFileFlags != 0 && finderFileFlags != h.FileFlags {
+		return nil, FormatError("FinderFlags high byte disagrees with FileFlags")
+	}
 	b[101] = byte(h.FinderFlags & 0xff) // Low byte only; the high byte is FileFlags.
 	b[122] = macBinaryII
 	b[123] = macBinaryII

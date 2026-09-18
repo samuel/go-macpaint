@@ -39,10 +39,10 @@ func Encode(w io.Writer, img image.Image) error {
 // header precedes the document and the data fork is padded to a 128-byte multiple,
 // as the MacBinary specification requires.
 //
-// These Header fields are computed and any caller-supplied value is ignored:
-// FileType (always "PNTG"), SizeOfDataFork, SizeOfResourceFork, UnpackedLength,
-// SecondHeaderLength, UploadVersion, ReadVersion and CRC. An empty FileName
-// becomes "untitled" and an empty FileCreator becomes "MPNT".
+// FileType is forced to "PNTG" and SizeOfDataFork is computed. The resource
+// fork, unpacked length and secondary header length are forced to zero, and
+// UploadVersion and ReadVersion are set to MacBinary II. CRC is computed. An
+// empty FileName becomes "untitled" and an empty FileCreator becomes "MPNT".
 func EncodeFile(w io.Writer, f *File) error {
 	if f == nil {
 		return errors.New("macpaint: nil file")

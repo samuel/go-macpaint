@@ -13,7 +13,8 @@ go get github.com/samuel/go-macpaint/macpaint
 MacPaint images are always 576x720 pixels and one bit per pixel. Two file variants
 are supported:
 
-- Files wrapped in a 128-byte MacBinary header (MacBinary I, II and III).
+- Files wrapped in the 128-byte MacBinary I/II header layout. MacBinary III
+  secondary headers are not supported.
 - Headerless files, which begin with the four-byte MacPaint document version.
 
 Usage

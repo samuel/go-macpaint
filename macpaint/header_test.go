@@ -23,9 +23,45 @@ func TestMacTimeZero(t *testing.T) {
 	if got := macStamp(time.Time{}); got != 0 {
 		t.Errorf("macStamp(zero) = %d, want 0", got)
 	}
-	// Times before the 1904 epoch are not representable and must clamp to zero.
-	if got := macStamp(time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)); got != 0 {
-		t.Errorf("macStamp(1900) = %d, want 0", got)
+	for _, tt := range []struct {
+		name string
+		when time.Time
+	}{
+		{name: "before epoch", when: time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)},
+		{name: "sub-second", when: macEpoch.Add(500 * time.Millisecond)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := macStamp(tt.when); got != 1 {
+				t.Errorf("macStamp(%v) = %d, want 1", tt.when, got)
+			}
+		})
+	}
+	if got := macStamp(macEpoch.Add((time.Duration(^uint32(0)) + 1) * time.Second)); got != ^uint32(0) {
+		t.Errorf("macStamp(after maximum) = %d, want %d", got, ^uint32(0))
+	}
+}
+
+func TestAppendHeaderName(t *testing.T) {
+	name := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789é"
+	b, err := appendHeader(nil, &Header{FileName: name}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b[1]; got != 62 {
+		t.Errorf("filename length = %d, want 62", got)
+	}
+	if got := string(b[2:64]); got != name[:62] {
+		t.Errorf("filename = %q, want %q", got, name[:62])
+	}
+	if got := b[64]; got != ' ' {
+		t.Errorf("filename padding = %#x, want a space", got)
+	}
+}
+
+func TestAppendHeaderFinderFlagsConflict(t *testing.T) {
+	_, err := appendHeader(nil, &Header{FileFlags: 1, FinderFlags: 2 << 8}, 0)
+	if err == nil {
+		t.Fatal("appendHeader accepted conflicting FinderFlags high byte")
 	}
 }
 
