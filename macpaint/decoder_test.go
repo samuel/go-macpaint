@@ -312,12 +312,25 @@ func macBinaryII2(hdr []byte, secondHeader uint16) []byte {
 func TestDecodeErrors(t *testing.T) {
 	valid := readFixture(t, "header.mac")
 
+	zeroDataFork := make([]byte, len(valid))
+	copy(zeroDataFork, valid)
+	for i := 83; i < 87; i++ {
+		zeroDataFork[i] = 0
+	}
+
 	wrongType := make([]byte, len(valid))
 	copy(wrongType, valid)
 	copy(wrongType[65:69], "JPEG")
 
 	badCRC := macBinaryII2(valid, 0)
 	badCRC[125] ^= 0xff
+
+	trailing := macBinaryII2(valid, 0)
+	forkLen := binary.BigEndian.Uint32(trailing[83:87])
+	trailingLen := uint32(3)
+	binary.BigEndian.PutUint32(trailing[83:87], forkLen+trailingLen)
+	binary.BigEndian.PutUint16(trailing[124:126], crcCCITT(trailing[:124]))
+	trailing = append(trailing[:128+forkLen], 0x80, 0x80, 0x80)
 
 	// A headerless document whose RLE runs past the end of the image. The image is
 	// 51840 bytes of packed pixels; 409 runs of 127 bytes overruns it.
@@ -353,6 +366,14 @@ func TestDecodeErrors(t *testing.T) {
 		{
 			name: "crc mismatch", data: badCRC,
 			wantMsg: FormatError("CRC mismatch").Error(),
+		},
+		{
+			name: "zero data fork", data: zeroDataFork,
+			wantMsg: FormatError("zero data fork length").Error(),
+		},
+		{
+			name: "trailing data", data: trailing,
+			wantMsg: FormatError("trailing data after image").Error(),
 		},
 		{
 			name: "secondary header", data: macBinaryII2(valid, 3615),

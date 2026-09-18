@@ -316,13 +316,24 @@ func (d *decoder) decodePixels(rd *bufio.Reader, pix []byte) error {
 }
 
 func (d *decoder) decode() (*image.Paletted, error) {
+	if d.header != nil && d.header.SizeOfDataFork == 0 {
+		return nil, FormatError("zero data fork length")
+	}
 	r := d.body()
 	if err := d.skipDocHeader(r); err != nil {
 		return nil, err
 	}
 	img := image.NewPaletted(image.Rect(0, 0, Width, Height), Palette)
-	if err := d.decodePixels(bufio.NewReader(r), img.Pix); err != nil {
+	rd := bufio.NewReader(r)
+	if err := d.decodePixels(rd, img.Pix); err != nil {
 		return nil, err
+	}
+	if d.header != nil && d.header.UploadVersion >= macBinaryII {
+		if _, err := rd.Peek(1); err == nil {
+			return nil, FormatError("trailing data after image")
+		} else if !errors.Is(err, io.EOF) {
+			return nil, err
+		}
 	}
 	return img, nil
 }
