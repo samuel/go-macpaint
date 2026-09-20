@@ -52,7 +52,7 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12.2
+          version: v2.13.2
 
   fuzz:
     runs-on: ubuntu-latest
