@@ -8,13 +8,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/samuel/go-macpaint/macpaint"
+	"samuelks.com/macpaint"
 )
 
 // ExampleDecode decodes a MacPaint image. The concrete type is always
 // *image.Paletted, so pixel data can be read without a conversion.
 func ExampleDecode() {
-	data, err := os.ReadFile("../testdata/header.mac")
+	data, err := os.ReadFile("testdata/header.mac")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func ExampleDecode() {
 // ExampleDecodeFile reads the image together with its MacBinary metadata.
 // File.Header is nil for a headerless file.
 func ExampleDecodeFile() {
-	data, err := os.ReadFile("../testdata/bigbinky.mac")
+	data, err := os.ReadFile("testdata/bigbinky.mac")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -87,13 +87,13 @@ jobs:
         run: |
           go test -run='^$' -fuzz='^FuzzDecode$' \
             -fuzztime=${{ github.event_name == 'schedule' && '2m' || '60s' }} \
-            ./macpaint/
+            .
 
       # The round-trip target re-encodes every 576x720 pixel, so it manages only a
       # few execs/sec. Restrict it to the weekly run, where that rate is acceptable.
       - name: Fuzz the encode round-trip
         if: github.event_name == 'schedule'
-        run: go test -run='^$' -fuzz='^FuzzEncodeRoundTrip$' -fuzztime=5m ./macpaint/
+        run: go test -run='^$' -fuzz='^FuzzEncodeRoundTrip$' -fuzztime=5m .
 
       - name: Report corpus size
         if: always()
@@ -108,5 +108,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-crashers
-          path: macpaint/testdata/fuzz/
+          path: testdata/fuzz/
           if-no-files-found: ignore

@@ -105,7 +105,7 @@ func TestDecodeFileHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
-			data, err := os.ReadFile("../testdata/" + tt.file)
+			data, err := os.ReadFile("testdata/" + tt.file)
 			if err != nil {
 				t.Skipf("fixture not present: %s", err)
 			}

@@ -98,7 +98,7 @@ func TestPackBitsEncode(t *testing.T) {
 }
 
 func TestPackBitsEncodeNeverExpandsCorpusRows(t *testing.T) {
-	fns, err := filepath.Glob("../testdata/*.mac")
+	fns, err := filepath.Glob("testdata/*.mac")
 	if err != nil || len(fns) == 0 {
 		t.Skip("no corpus available")
 	}
@@ -138,7 +138,7 @@ func TestPackBitsEncodeNeverExpandsCorpusRows(t *testing.T) {
 }
 
 func TestEncodeFileRoundTrip(t *testing.T) {
-	fns, err := filepath.Glob("../testdata/*.mac")
+	fns, err := filepath.Glob("testdata/*.mac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestEncodeNilGuards(t *testing.T) {
 // TestEncodeFastPathsAgree checks that the *image.Paletted and *image.Gray fast
 // paths produce the same output as the generic color-model path.
 func TestEncodeFastPathsAgree(t *testing.T) {
-	data, err := os.ReadFile("../testdata/noheader.mac")
+	data, err := os.ReadFile("testdata/noheader.mac")
 	if err != nil {
 		t.Fatal(err)
 	}

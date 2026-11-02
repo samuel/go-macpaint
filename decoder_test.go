@@ -17,7 +17,7 @@ import (
 )
 
 // testOutDir is where -save writes PNGs. It's created on demand.
-const testOutDir = "../testout"
+const testOutDir = "testout"
 
 // saveOutput is enabled with "go test -save" to write each decoded image as a
 // PNG in testOutDir for visual inspection.
@@ -48,7 +48,7 @@ func savePNG(t *testing.T, name string, img image.Image) {
 // Only a subset of the sample images is committed.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("../testdata", name))
+	data, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
 		t.Skipf("fixture not present: %s", err)
 	}
@@ -165,7 +165,7 @@ func TestDecodeConfigMatchesDecode(t *testing.T) {
 }
 
 func TestDecode(t *testing.T) {
-	fns, err := filepath.Glob("../testdata/*.mac")
+	fns, err := filepath.Glob("testdata/*.mac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestDecode(t *testing.T) {
 }
 
 func TestDecodeHeader(t *testing.T) {
-	f, err := os.Open("../testdata/header.mac")
+	f, err := os.Open("testdata/header.mac")
 	if err != nil {
 		t.Skipf("fixture not present: %s", err)
 	}
@@ -232,7 +232,7 @@ func TestImageDecodeSniffing(t *testing.T) {
 }
 
 func TestEncodeRoundTrip(t *testing.T) {
-	fns, err := filepath.Glob("../testdata/*.mac")
+	fns, err := filepath.Glob("testdata/*.mac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestEncodeRoundTrip(t *testing.T) {
 }
 
 func TestDecodeNoHeader(t *testing.T) {
-	f, err := os.Open("../testdata/noheader.mac")
+	f, err := os.Open("testdata/noheader.mac")
 	if err != nil {
 		t.Skipf("fixture not present: %s", err)
 	}
@@ -430,7 +430,7 @@ func TestDecodeMacBinaryIIValid(t *testing.T) {
 }
 
 func BenchmarkDecode(b *testing.B) {
-	data, err := os.ReadFile("../testdata/1066.mac")
+	data, err := os.ReadFile("testdata/1066.mac")
 	if err != nil {
 		b.Skipf("fixture not present: %s", err)
 	}
@@ -443,7 +443,7 @@ func BenchmarkDecode(b *testing.B) {
 }
 
 func BenchmarkDecodeFile(b *testing.B) {
-	data, err := os.ReadFile("../testdata/1066.mac")
+	data, err := os.ReadFile("testdata/1066.mac")
 	if err != nil {
 		b.Skipf("fixture not present: %s", err)
 	}
@@ -456,7 +456,7 @@ func BenchmarkDecodeFile(b *testing.B) {
 }
 
 func BenchmarkEncode(b *testing.B) {
-	data, err := os.ReadFile("../testdata/1066.mac")
+	data, err := os.ReadFile("testdata/1066.mac")
 	if err != nil {
 		b.Skipf("fixture not present: %s", err)
 	}
@@ -475,7 +475,7 @@ func BenchmarkEncode(b *testing.B) {
 // BenchmarkEncodeGeneric measures the fallback path, which goes through the color
 // model rather than reading pixel data directly.
 func BenchmarkEncodeGeneric(b *testing.B) {
-	data, err := os.ReadFile("../testdata/1066.mac")
+	data, err := os.ReadFile("testdata/1066.mac")
 	if err != nil {
 		b.Skipf("fixture not present: %s", err)
 	}

@@ -2,12 +2,12 @@ Go encoder and decoder package for MacPaint image files
 =======================================================
 
 [![CI](https://github.com/samuel/go-macpaint/actions/workflows/ci.yml/badge.svg)](https://github.com/samuel/go-macpaint/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/samuel/go-macpaint/macpaint.svg)](https://pkg.go.dev/github.com/samuel/go-macpaint/macpaint)
+[![Go Reference](https://pkg.go.dev/badge/samuelks.com/macpaint.svg)](https://pkg.go.dev/samuelks.com/macpaint)
 
-Documentation: https://pkg.go.dev/github.com/samuel/go-macpaint/macpaint
+Documentation: https://pkg.go.dev/samuelks.com/macpaint
 
 ```
-go get github.com/samuel/go-macpaint/macpaint
+go get samuelks.com/macpaint
 ```
 
 MacPaint images are always 576x720 pixels and one bit per pixel. Two file variants

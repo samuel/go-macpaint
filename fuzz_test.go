@@ -11,7 +11,7 @@ import (
 // valid files rather than having to discover the format from scratch.
 func fuzzSeeds(f *testing.F) {
 	f.Helper()
-	for _, fn := range []string{"../testdata/header.mac", "../testdata/noheader.mac"} {
+	for _, fn := range []string{"testdata/header.mac", "testdata/noheader.mac"} {
 		data, err := os.ReadFile(fn)
 		if err != nil {
 			f.Fatal(err)

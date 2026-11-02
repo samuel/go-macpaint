@@ -1,3 +1,3 @@
-module github.com/samuel/go-macpaint
+module samuelks.com/macpaint
 
 go 1.26
